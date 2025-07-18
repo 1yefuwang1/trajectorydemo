@@ -3,6 +3,8 @@
 
 param name          string
 param location      string
+param subnetId      string
+param userAssignedIdentityId string
 @minValue(1)
 param agentCount    int    = 3
 param nodeVmSize    string = 'Standard_D4s_v5'
@@ -11,6 +13,8 @@ param nodeVmSize    string = 'Standard_D4s_v5'
   'kubenet'
 ])
 param networkPlugin string = 'azure'
+param serviceCidr string = '10.1.0.0/16' // Default to a non-overlapping CIDR
+param dnsServiceIP string = '10.1.0.10' // Must be within serviceCidr
 
 // AKS managed cluster
 resource aksCluster 'Microsoft.ContainerService/managedClusters@2023-03-01' = {
@@ -21,9 +25,12 @@ resource aksCluster 'Microsoft.ContainerService/managedClusters@2023-03-01' = {
     tier: 'Standard'
   }
 
-  // <‑‑‑ This is the critical fix
+  // Use user-assigned managed identity
   identity: {
-    type: 'SystemAssigned'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${userAssignedIdentityId}': {}
+    }
   }
 
   properties: {
@@ -33,6 +40,8 @@ resource aksCluster 'Microsoft.ContainerService/managedClusters@2023-03-01' = {
     networkProfile: {
       networkPlugin: networkPlugin
       loadBalancerSku: 'standard'
+      serviceCidr: serviceCidr
+      dnsServiceIP: dnsServiceIP
     }
 
     agentPoolProfiles: [
@@ -44,6 +53,7 @@ resource aksCluster 'Microsoft.ContainerService/managedClusters@2023-03-01' = {
         vmSize: nodeVmSize
         osType: 'Linux'
         maxPods: 110
+        vnetSubnetID: subnetId
       }
     ]
   }
@@ -51,4 +61,4 @@ resource aksCluster 'Microsoft.ContainerService/managedClusters@2023-03-01' = {
 
 // Outputs
 output clusterName  string = aksCluster.name
-output principalId  string = aksCluster.identity.principalId   // useful for RBAC or ACR pull access
+output agentPoolPrincipalId string = aksCluster.properties.identityProfile.kubeletidentity.objectId
